@@ -26,6 +26,17 @@ export class ValidationError extends AppError {
   }
 }
 
+function aiFailureUserMessage(err) {
+  const text = String(err?.message || 'unknown error').slice(0, 200);
+  if (err?.status === 503 || /high demand|overloaded|model is overloaded/i.test(text)) {
+    return `AI model overloaded right now (503): ${text}\nYour key and settings are fine. Retry /ideas in 5-10 minutes. If it keeps failing, set GEMINI_MODEL to gemini-2.5-flash in Vercel env vars and rerun.`;
+  }
+  if (err?.status === 429 || /rate limit|RESOURCE_EXHAUSTED|quota/i.test(text)) {
+    return `AI rate limit or quota reached: ${text}\nWait a few minutes, or set GEMINI_MODEL to another model like gemini-2.5-flash-lite.`;
+  }
+  return `AI request failed: ${text}. If it mentions "rate limit", wait about a minute and retry.`;
+}
+
 export function validateInsights(obj) {
   if (!obj || typeof obj !== 'object') throw new ValidationError('empty');
   return {
@@ -154,7 +165,7 @@ Sections needed: executive summary, key performance changes (facts from data), b
   } catch (err) {
     logSafeError('gemini.report', err);
     throw new AppError('Gemini request failed', {
-      userMessage: `AI request failed: ${(err?.message || '').slice(0, 200) || 'unknown error'}. If it mentions "rate limit", wait about a minute and retry.`
+      userMessage: aiFailureUserMessage(err)
     });
   }
   const validated = validateInsights(raw);
@@ -191,7 +202,7 @@ export async function generateIdeas(bundle) {
   } catch (err) {
     logSafeError('gemini.ideas', err);
     throw new AppError('Gemini request failed', {
-      userMessage: `AI request failed: ${(err?.message || '').slice(0, 200) || 'unknown error'}. If it mentions "rate limit", wait about a minute and retry.`
+      userMessage: aiFailureUserMessage(err)
     });
   }
   const ideas = (raw?.video_ideas || []).slice(0, 5).map((i) => ({
@@ -256,7 +267,7 @@ export async function generateTitles(bundle) {
   } catch (err) {
     logSafeError('gemini.titles', err);
     throw new AppError('Gemini request failed', {
-      userMessage: `AI request failed: ${(err?.message || '').slice(0, 200) || 'unknown error'}. If it mentions "rate limit", wait about a minute and retry.`
+      userMessage: aiFailureUserMessage(err)
     });
   }
   const problem = typeof raw?.problem_detected === 'string' ? raw.problem_detected : '';
@@ -286,7 +297,7 @@ export async function generateThumbnailConcepts(bundle) {
   } catch (err) {
     logSafeError('gemini.thumb', err);
     throw new AppError('Gemini request failed', {
-      userMessage: `AI request failed: ${(err?.message || '').slice(0, 200) || 'unknown error'}. If it mentions "rate limit", wait about a minute and retry.`
+      userMessage: aiFailureUserMessage(err)
     });
   }
   const concepts = (raw?.concepts || [])
@@ -318,7 +329,7 @@ export async function answerChatQuestion(question, bundle) {
   } catch (err) {
     logSafeError('gemini.chat', err);
     throw new AppError('Gemini request failed', {
-      userMessage: `AI request failed: ${(err?.message || '').slice(0, 200) || 'unknown error'}. If it mentions "rate limit", wait about a minute and retry.`
+      userMessage: aiFailureUserMessage(err)
     });
   }
   await saveRecommendation('chat', bundle.channel.channelId, { question, answer: text.slice(0, 4000) });

@@ -11,8 +11,30 @@ for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split(/\r?\n
   if (m) apiKey = m[1].replace(/^["']|["']$/g, '');
 }
 console.log(`Key length: ${apiKey.length}, starts with: ${apiKey.slice(0, 6)}...`);
-
 const host = 'https://generativelanguage.googleapis.com';
+
+async function tryGenerate(model) {
+  const t = Date.now();
+  try {
+    const res = await fetch(`${host}/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: 'Reply with exactly: OK' }] }]
+      }),
+      signal: AbortSignal.timeout(110000)
+    });
+    const body = await res.json();
+    const text = body?.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(body).slice(0, 200);
+    console.log(`[${model}] HTTP ${res.status} (${Math.round((Date.now() - t) / 100) / 10}s):`, JSON.stringify(text).slice(0, 120));
+  } catch (err) {
+    console.error(`[${model}] FAILED after ${Math.round((Date.now() - t) / 100) / 10}s:`, err?.name, err?.cause?.code || '', String(err?.message || err).slice(0, 200));
+  }
+}
+
+await tryGenerate('gemini-3.8-flash');
+await tryGenerate('gemini-flash-latest');
+
 const t0 = Date.now();
 try {
   const res = await fetch(`${host}/v1beta/models?key=${apiKey}`, { signal: AbortSignal.timeout(15000) });

@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/webhook.js": { "maxDuration": 120 },
+    "api/webhook.js": { "maxDuration": 300 },
     "api/cron/daily-sync.js": { "maxDuration": 300 },
     "api/oauth/callback.js": { "maxDuration": 15 }
   },

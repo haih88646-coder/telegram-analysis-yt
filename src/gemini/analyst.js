@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
-import { geminiConfig } from '../config.js';
+import { geminiConfig, hasDatabase } from '../config.js';
 import { withRetries, isRetryableStatus } from '../utils/errors.js';
+import { query } from '../database/db.js';
 
 let cachedClient = null;
 
@@ -32,6 +33,27 @@ function modelName() {
   return geminiConfig().model;
 }
 
+let modelCache = { value: null, loadedAt: 0 };
+
+export async function activeModelName() {
+  const fallback = geminiConfig().model;
+  if (hasDatabase()) {
+    try {
+      if (Date.now() - modelCache.loadedAt > 60000) {
+        const rows = await query(`SELECT value FROM sync_state WHERE key = 'gemini_model' LIMIT 1`);
+        modelCache = { value: rows[0]?.value || null, loadedAt: Date.now() };
+      }
+    } catch {
+      modelCache = { value: modelCache.value || null, loadedAt: Date.now() };
+    }
+  }
+  return modelCache.value || fallback;
+}
+
+export function clearModelOverride() {
+  modelCache = { value: null, loadedAt: 0 };
+}
+
 const RETRYABLE_AI = (err) => isRetryableStatus(err?.status) || err?.status === undefined && err?.retryable === true;
 
 export async function generateText({ system, prompt }) {
@@ -41,7 +63,7 @@ export async function generateText({ system, prompt }) {
     async () => {
       try {
         return await ai.models.generateContent({
-          model: modelName(),
+          model: await activeModelName(),
           contents: prompt,
           config: {
             systemInstruction: system || undefined,
@@ -69,7 +91,7 @@ export async function generateJson({ system, prompt, schema, temperature = 0.7 }
     async () => {
       try {
         return await ai.models.generateContent({
-          model: modelName(),
+          model: await activeModelName(),
           contents: prompt,
           config: {
             systemInstruction: system || undefined,

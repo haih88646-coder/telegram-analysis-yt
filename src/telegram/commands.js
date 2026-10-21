@@ -1,22 +1,23 @@
 import { sendText, sendTyping } from './client.js';
 import { parseCommand, isOwner, rateLimit } from './security.js';
-import { hasDatabase, getEnv, LIMITS } from '../config.js';
+import { hasDatabase, getEnv, geminiConfig, LIMITS } from '../config.js';
 import { getOwnChannel } from '../youtube/auth.js';
 import { getRecentVideos, extractVideoId, validateVideoId } from '../youtube/videos.js';
 import { getChannelDaily, getOverviewTotals, getVideoDaily, getVideoTotals } from '../youtube/analytics.js';
 import { syncNow } from '../services/sync.js';
 import { buildPerformanceReport, formatTopVideos, buildTrends, getChannelRowsDB, getVideoStatsDB, identifyUnderperformers, clip } from '../services/report.js';
 import { collectChannelBundle, generateFullReport, generateIdeas, generateTitles, generateThumbnailConcepts, answerChatQuestion, collectVideoBundle } from '../services/recommendations.js';
+import { activeModelName, clearModelOverride } from '../gemini/analyst.js';
 import { query } from '../database/db.js';
 import { fmtNum, fmtDuration, fmtPct, fmtDelta } from '../utils/formatting.js';
 import { AppError } from '../utils/errors.js';
 import { logSafeError } from '../utils/errors.js';
 
-const WELCOME = `Welcome! I am your private AI YouTube analyst.\n\nCommands:\n/status - API config and connection status\n/report - channel performance report\n/videos - top 10 videos by views\n/shorts - Shorts analysis\n/longform - long-form analysis\n/trends - recent growth trends\n/ideas - 5 AI video ideas from real data\n/analyze VIDEO_ID - deep dive one video\n/title VIDEO_ID - title alternatives\n/thumbnail VIDEO_ID - thumbnail concepts\n/weekly - weekly AI report\n/sync - refresh analytics storage\n/chat QUESTION - ask about your channel\n\nFirst steps: authorize your channel (see README), then run /sync.`;
+const WELCOME = `Welcome! I am your private AI YouTube analyst.\n\nCommands:\n/status - API config and connection status\n/report - channel performance report\n/videos - top 10 videos by views\n/shorts - Shorts analysis\n/longform - long-form analysis\n/trends - recent growth trends\n/ideas - 5 AI video ideas from real data\n/analyze VIDEO_ID - deep dive one video\n/title VIDEO_ID - title alternatives\n/thumbnail VIDEO_ID - thumbnail concepts\n/weekly - weekly AI report\n/sync - refresh analytics storage\n/chat QUESTION - ask about your channel\n/model [NAME|reset] - switch or view the AI model\n\nFirst steps: authorize your channel (see README), then run /sync.`;
 
 const HELP = WELCOME;
 
-const COMMAND_NAMES = new Set(['start', 'help', 'status', 'report', 'videos', 'shorts', 'longform', 'trends', 'ideas', 'analyze', 'title', 'thumbnail', 'weekly', 'sync', 'chat']);
+const COMMAND_NAMES = new Set(['start', 'help', 'status', 'report', 'videos', 'shorts', 'longform', 'trends', 'ideas', 'analyze', 'title', 'thumbnail', 'weekly', 'sync', 'chat', 'model']);
 
 export async function handleTelegramUpdate(update) {
   const message = update?.message || update?.edited_message;
@@ -140,9 +141,53 @@ async function dispatchCommand(command, args, chatId, ownerId) {
       await sendText(chatId, text || '(No answer produced. Try again.)');
       return;
     }
+
+    case 'model': {
+      await cmdModel(chatId, args);
+      return;
+    }
     default:
       await sendText(chatId, `Unknown command: /${command}`);
   }
+}
+
+const MODEL_SUGGESTIONS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+
+async function cmdModel(chatId, args) {
+  if (!hasDatabase()) throw needDb();
+  const current = await activeModelName();
+  const raw = args.trim();
+  if (!raw) {
+    const lines = [
+      `Current AI model: ${current}`,
+      '',
+      'Switch: /model MODEL_NAME (example: /model gemini-2.5-flash)',
+      'Reset to default: /model reset',
+      '',
+      'Common options on your key:',
+      ...MODEL_SUGGESTIONS.map((m) => `- ${m}`),
+      `- ${geminiConfig().model} (current default)`
+    ];
+    await sendText(chatId, lines.join('\n'));
+    return;
+  }
+  if (raw.toLowerCase() === 'reset') {
+    await query(`DELETE FROM sync_state WHERE key = 'gemini_model'`);
+    clearModelOverride();
+    await sendText(chatId, 'AI model reset to the configured default');
+    return;
+  }
+  if (!/^[A-Za-z0-9._-]{3,64}$/.test(raw)) {
+    await sendText(chatId, 'That is not a valid model name. Use letters, digits, dots, dashes only, e.g. /model gemini-2.5-flash');
+    return;
+  }
+  await query(
+    `INSERT INTO sync_state (key, value, updated_at) VALUES ('gemini_model', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`,
+    [raw]
+  );
+  clearModelOverride();
+  await sendText(chatId, `AI model switched to ${raw}. Applies on the next AI command (cached at most 1 minute).`);
 }
 
 function needDb() {

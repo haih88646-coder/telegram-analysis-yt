@@ -151,7 +151,7 @@ async function dispatchCommand(command, args, chatId, ownerId) {
   }
 }
 
-const MODEL_SUGGESTIONS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-flash-latest'];
+const MODEL_SUGGESTIONS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
 
 async function cmdModel(chatId, args) {
   if (!hasDatabase()) throw needDb();

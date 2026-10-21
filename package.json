@@ -1,0 +1,21 @@
+{
+  "name": "ai-youtube-analyst",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:db": "node --env-file=.env --test tests/db.integration.test.js",
+    "authorize": "node --env-file=.env scripts/authorize-youtube.js",
+    "webhook": "node --env-file=.env scripts/register-webhook.js",
+    "sync": "node --env-file=.env scripts/run-sync.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.30.0",
+    "@neondatabase/serverless": "^1.2.0",
+    "googleapis": "^187.0.0"
+  }
+}

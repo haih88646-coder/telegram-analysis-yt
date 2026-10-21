@@ -61,10 +61,22 @@ export async function collectChannelBundle() {
   const channel = await getOwnChannel();
   const dailyRows = await getChannelRowsDB(channel.channelId);
   const videoStats = await getVideoStatsDB(channel.channelId);
+  let upcoming = [];
+  try {
+    const { getRecentVideos } = await import('../youtube/videos.js');
+    const { videos } = await getRecentVideos(200);
+    const now = Date.now();
+    upcoming = videos
+      .filter((v) => v.publishedAt && new Date(v.publishedAt).getTime() > now)
+      .sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+  } catch {
+    upcoming = [];
+  }
   return {
     channel,
     daily: dailyRows || [],
     videoStats: videoStats || [],
+    upcoming,
     hasDaily: Boolean(dailyRows && dailyRows.length > 0),
     hasVideoStats: Boolean(videoStats && videoStats.length > 0),
     worst: identifyUnderperformers(videoStats || [])
@@ -80,8 +92,7 @@ function videoLine(v) {
 
 export function buildDataBundle(bundle) {
   const { channel, daily, videoStats } = bundle;
-  const latest = daily[0]?.date || null;
-  const stats = videoStats.map((v) => {
+  const latest = daily[0]?.date || null;  const stats = videoStats.map((v) => {
     const publishedDate = v.publishedAt ? new Date(v.publishedAt).toISOString().slice(0, 10) : null;
     const ageDays = publishedDate ? Math.max(0, Math.round((Date.now() - new Date(publishedDate + 'T00:00:00Z').getTime()) / 86400000)) : null;
     return { ...v, publishedDate, ageDays };
@@ -122,10 +133,19 @@ export function buildDataBundle(bundle) {
     lines.push('WEAKEST VIDEOS BY VIEWS (same window):');
     lines.push(bottom.map(videoLine).join('\n'));
   }
+  if (Array.isArray(bundle.upcoming) && bundle.upcoming.length) {
+    lines.push('');
+    lines.push('SCHEDULED / UPCOMING VIDEOS (from YouTube Data API, not Analytics):');
+    lines.push(
+      bundle.upcoming.map((v) => {
+        const dt = new Date(v.publishedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+        return `- "${clip(v.title, 90)}" [${v.isShort ? 'Short' : 'Long-form'}] scheduled for ${dt}`;
+      }).join('\n')
+    );
+  }
   if (bundle.worst && bundle.worst.length) {
     lines.push('');
-    lines.push('LOWEST RETENTION (videos with at least 50 views):');
-    lines.push(
+    lines.push('LOWEST RETENTION (videos with at least 50 views):');    lines.push(
       bundle.worst
         .map((v) => `- "${clip(v.title, 80)}" avg % viewed ${fmtPct(v.averageViewPercentage)}, ${fmtNum(v.analyticsViews)} views`)
         .join('\n')

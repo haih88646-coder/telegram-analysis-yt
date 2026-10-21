@@ -28,11 +28,14 @@ export class ValidationError extends AppError {
 
 function aiFailureUserMessage(err) {
   const text = String(err?.message || 'unknown error').slice(0, 200);
+  if (err?.status === 404 || /no longer available|not found for API version/i.test(text)) {
+    return `AI model is not available for your API key: ${text}\nSwitch with /model - for example: /model gemini-3.5-flash-lite or /model gemini-2.5-flash. Send just /model to see the current value.`;
+  }
   if (err?.status === 503 || /high demand|overloaded|model is overloaded/i.test(text)) {
-    return `AI model overloaded right now (503): ${text}\nYour key and settings are fine. Retry /ideas in 5-10 minutes. If it keeps failing, set GEMINI_MODEL to gemini-2.5-flash in Vercel env vars and rerun.`;
+    return `AI model overloaded right now (503): ${text}\nYour key and settings are fine. Retry /ideas in 5-10 minutes. If it keeps failing, switch with /model, e.g. /model gemini-2.5-flash.`;
   }
   if (err?.status === 429 || /rate limit|RESOURCE_EXHAUSTED|quota/i.test(text)) {
-    return `AI rate limit or quota reached: ${text}\nWait a few minutes, or set GEMINI_MODEL to another model like gemini-2.5-flash-lite.`;
+    return `AI rate limit or quota reached: ${text}\nWait a few minutes, or switch with /model to another model.`;
   }
   return `AI request failed: ${text}. If it mentions "rate limit", wait about a minute and retry.`;
 }

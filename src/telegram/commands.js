@@ -106,6 +106,7 @@ async function dispatchCommand(command, args, chatId, ownerId) {
       return;
 
     case 'ideas': {
+      await sendText(chatId, 'Generating ideas from your channel data... (about 10-30 seconds)');
       const bundle = await collectChannelBundle();
       const text = await generateIdeas(bundle);
       await sendText(chatId, text);
@@ -279,6 +280,10 @@ async function cmdAnalyze(chatId, args) {
     return;
   }
   const videoId = resolved.id;
+  if (!videoId) {
+    await sendText(chatId, 'Video ID missing. Use /analyze VIDEO_ID or /analyze YOUTUBE_URL.');
+    return;
+  }
   const meta = await getVideoMeta(videoId);
   if (!meta) {
     await sendText(chatId, `No video found for ID ${videoId} on your channel.`);

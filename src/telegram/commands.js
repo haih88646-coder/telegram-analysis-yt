@@ -255,13 +255,15 @@ async function resolveVideoArg(args) {
 }
 
 async function getVideoMeta(videoId) {
-  const { getRecentVideos } = await import('../youtube/videos.js');
+  const { getRecentVideos, validateVideoId, extractVideoId } = await import('../youtube/videos.js');
+  const id = validateVideoId(extractVideoId(videoId));
+  if (!id) return null;
   const { videos } = await getRecentVideos(200);
-  const v = videos.find((x) => x.videoId === videoId);
+  const v = videos.find((x) => x.videoId === id);
   if (!v) {
     const { getYoutubeClients } = await import('../youtube/auth.js');
     const { youtube } = getYoutubeClients();
-    const res = await youtube.videos.list({ part: 'snippet,contentDetails,statistics', id: videoId });
+    const res = await youtube.videos.list({ part: 'snippet,contentDetails,statistics', id });
     const item = res?.data?.items?.[0];
     if (!item) return null;
     const { normalizeVideo } = await import('../youtube/videos.js');

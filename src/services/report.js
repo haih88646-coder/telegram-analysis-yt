@@ -2,8 +2,14 @@ import { query, hasDb, dbNotConfiguredError } from '../database/db.js';
 import { getChannelDaily } from '../youtube/analytics.js';
 import { getOwnChannel } from '../youtube/auth.js';
 import { fmtNum, fmtDuration, fmtPct, fmtDelta } from '../utils/formatting.js';
-import { addDays, todayIso } from '../utils/dates.js';
+import { addDays, todayIso, isoDate } from '../utils/dates.js';
 import { logSafeError } from '../utils/errors.js';
+
+function toIsoDate(value) {
+  if (value instanceof Date) return isoDate(value);
+  if (typeof value === 'string') return value.slice(0, 10);
+  return null;
+}
 
 export async function getChannelRowsDB() {
   if (!hasDb()) return null;
@@ -13,7 +19,7 @@ export async function getChannelRowsDB() {
        FROM channel_daily ORDER BY date DESC LIMIT 120`
     );
     return rows.map((r) => ({
-      date: typeof r.date === 'string' ? r.date.slice(0, 10) : r.date,
+      date: toIsoDate(r.date) || String(r.date),
       views: Number(r.views) || 0,
       estimatedMinutesWatched: Number(r.estimated_minutes_watched) || 0,
       averageViewDurationSeconds: Number(r.average_view_duration_seconds) || 0,

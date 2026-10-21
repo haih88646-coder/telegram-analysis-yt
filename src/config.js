@@ -37,7 +37,9 @@ export function youtubeConfig() {
 export function geminiConfig() {
   return {
     apiKey: requireEnv('GEMINI_API_KEY', 'AI analysis'),
-    model: getEnv('GEMINI_MODEL') || 'gemini-3.8-flash'
+    model: getEnv('GEMINI_MODEL') || 'gemini-3.8-flash',
+    requestTimeoutMs: Number(getEnv('GEMINI_TIMEOUT_MS') || 45000),
+    overallTimeoutMs: Number(getEnv('GEMINI_TOTAL_TIMEOUT_MS') || 90000)
   };
 }
 

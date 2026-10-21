@@ -7,9 +7,25 @@ let cachedClient = null;
 function getClient() {
   if (!cachedClient) {
     const config = geminiConfig();
-    cachedClient = new GoogleGenAI({ apiKey: config.apiKey });
+    cachedClient = new GoogleGenAI({
+      apiKey: config.apiKey,
+      httpOptions: { timeout: config.requestTimeoutMs }
+    });
   }
   return cachedClient;
+}
+
+function raceTimeout(promise, ms, label) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label} timed out after ${Math.round(ms / 1000)}s`);
+      err.status = 504;
+      err.retryable = true;
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
 }
 
 function modelName() {
@@ -20,7 +36,8 @@ const RETRYABLE_AI = (err) => isRetryableStatus(err?.status) || err?.status === 
 
 export async function generateText({ system, prompt }) {
   const ai = getClient();
-  const res = await withRetries(
+  const res = await raceTimeout(
+    withRetries(
     async () => {
       try {
         return await ai.models.generateContent({
@@ -41,13 +58,14 @@ export async function generateText({ system, prompt }) {
     },
     { retries: 2, baseDelayMs: 1200 },
     RETRYABLE_AI
-  );
+  ), geminiConfig().overallTimeoutMs, 'Gemini text request');
   return res.text || '';
 }
 
 export async function generateJson({ system, prompt, schema, temperature = 0.7 }) {
   const ai = getClient();
-  const res = await withRetries(
+  const res = await raceTimeout(
+    withRetries(
     async () => {
       try {
         return await ai.models.generateContent({
@@ -66,7 +84,7 @@ export async function generateJson({ system, prompt, schema, temperature = 0.7 }
     },
     { retries: 2, baseDelayMs: 1200 },
     RETRYABLE_AI
-  );
+  ), geminiConfig().overallTimeoutMs, 'Gemini JSON request');
   const raw = res.text || '';
   return parseJsonSafe(raw);
 }

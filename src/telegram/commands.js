@@ -82,7 +82,8 @@ async function dispatchCommand(command, args, chatId, ownerId) {
     case 'sync': {
       if (!hasDatabase()) throw needDb();
       const summary = await syncNow();
-      await sendText(chatId, `Sync complete.\nVideos stored: ${summary.videosSaved}\nDaily analytics rows: ${summary.dailyRows}\nPer-video snapshot rows: ${summary.videoStatRows}\nTraffic source rows: ${summary.trafficRows}${summary.errors.length ? `\n\nWarnings:\n${summary.errors.slice(0, 5).join('\n')}` : ''}`);
+      const note = summary.videoStatRows === 0 ? '\n\nNote: YouTube creates per-video rows 1-3 days after a video gets views, so brand-new uploads are not listed yet. Lifetime totals (/report, /videos fallback) still work.' : '';
+      await sendText(chatId, `Sync complete.\nVideos stored: ${summary.videosSaved}\nDaily analytics rows: ${summary.dailyRows}\nPer-video snapshot rows: ${summary.videoStatRows}\nTraffic source rows: ${summary.trafficRows}${note}${summary.errors.length ? `\n\nWarnings:\n${summary.errors.slice(0, 5).join('\n')}` : ''}`);
       return;
     }
 
@@ -188,18 +189,18 @@ async function cmdStatus(chatId) {
   await sendText(chatId, lines.join('\n'));
 }
 
-async function getDailyRowsWithLiveFallback() {
+async function getDailyRowsWithLiveFallback(channelId) {
   if (hasDatabase()) {
-    const rows = await getChannelRowsDB();
+    const rows = await getChannelRowsDB(channelId || null);
     if (rows && rows.length > 0) return { rows, source: 'stored snapshots (run /sync to refresh)' };
   }
   const live = await getChannelDaily(28);
   return { rows: live, source: 'live YouTube Analytics API call' };
 }
 
-async function getVideoStatsWithLiveFallback() {
+async function getVideoStatsWithLiveFallback(channelId) {
   if (hasDatabase()) {
-    const stats = await getVideoStatsDB(null);
+    const stats = await getVideoStatsDB(channelId || null);
     if (stats && stats.length > 0) return { stats, source: 'stored snapshot' };
   }
   try {
@@ -207,7 +208,11 @@ async function getVideoStatsWithLiveFallback() {
     const { getRecentVideos } = await import('../youtube/videos.js');
     const perVideo = await getPerVideoTotals(30);
     const { videos } = await getRecentVideos(200);
-    const metaById = new Map(videos.map((v) => [v.videoId, v]));
+    const metaById = new Map(
+      videos
+        .filter((v) => !channelId || v.channelId === channelId)
+        .map((v) => [v.videoId, v])
+    );
     const stats = perVideo
       .filter((s) => metaById.has(s.videoId))
       .map((s) => {
@@ -221,21 +226,36 @@ async function getVideoStatsWithLiveFallback() {
 }
 
 async function cmdReport(chatId) {
-  const [{ rows, source: dailySource }, channel] = await Promise.all([getDailyRowsWithLiveFallback(), getOwnChannel()]);
-  let videoStatsSource = 'none';
-  const { stats, source } = await getVideoStatsWithLiveFallback();
-  videoStatsSource = source;
+  const channel = await getOwnChannel();
+  const [{ rows, source: dailySource }, { stats, source: videoStatsSource }] = await Promise.all([
+    getDailyRowsWithLiveFallback(channel.channelId),
+    getVideoStatsWithLiveFallback(channel.channelId)
+  ]);
   const text = buildPerformanceReport(channel.title, rows, stats);
   await sendText(chatId, `${text}\n\nData source: ${dailySource}; per-video: ${videoStatsSource}`);
 }
 
 async function cmdVideos(chatId, filter) {
-  const { stats } = await getVideoStatsWithLiveFallback();
+  const channel = await getOwnChannel();
+  const { stats } = await getVideoStatsWithLiveFallback(channel.channelId);
+  if (stats.length === 0) {
+    const { videos } = await getRecentVideos(200);
+    const list = filter ? videos.filter((v) => (filter === 'shorts' ? v.isShort : !v.isShort)) : videos;
+    const head = 'No per-video Analytics rows yet (videos too new for the 1-3 day reporting delay).\nLifetime totals from Data API instead:\n\n';
+    if (list.length === 0) {
+      await sendText(chatId, `${head}No such videos found on the channel.`);
+      return;
+    }
+    const lines = list.slice(0, 10).map((v, i) => `${i + 1}. ${v.isShort ? '[Short] ' : ''}${v.title} | ${fmtNum(v.lifetimeViews)} views (${v.videoId})`);
+    await sendText(chatId, `${head}${lines.join('\n')}`);
+    return;
+  }
   await sendText(chatId, formatTopVideos(stats, { filter, limit: 10 }));
 }
 
 async function cmdTrends(chatId) {
-  const { rows } = await getDailyRowsWithLiveFallback();
+  const channel = await getOwnChannel();
+  const { rows } = await getDailyRowsWithLiveFallback(channel.channelId);
   await sendText(chatId, buildTrends(rows));
 }
 

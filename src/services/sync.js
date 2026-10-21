@@ -86,6 +86,15 @@ export async function syncNow({ days = 28, videoLimit = 200 } = {}) {
   }
 
   await query(
+    `DELETE FROM channel_daily WHERE channel_id <> $1`,
+    [channel.channelId]
+  );
+  await query(
+    `DELETE FROM channel_traffic WHERE channel_id <> $1`,
+    [channel.channelId]
+  );
+
+  await query(
     `INSERT INTO sync_state (key, value, updated_at) VALUES ('last_sync_at', $1, now())
      ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=now()`,
     [new Date().toISOString()]

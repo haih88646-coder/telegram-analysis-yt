@@ -45,7 +45,7 @@ export function validateInsights(obj) {
 
 export async function collectChannelBundle() {
   const channel = await getOwnChannel();
-  const dailyRows = await getChannelRowsDB();
+  const dailyRows = await getChannelRowsDB(channel.channelId);
   const videoStats = await getVideoStatsDB(channel.channelId);
   return {
     channel,

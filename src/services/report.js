@@ -11,12 +11,15 @@ function toIsoDate(value) {
   return null;
 }
 
-export async function getChannelRowsDB() {
+export async function getChannelRowsDB(channelId = null) {
   if (!hasDb()) return null;
   try {
+    const values = channelId ? [channelId] : [];
+    const filter = channelId ? 'WHERE channel_id = $1' : '';
     const rows = await query(
       `SELECT date, views, estimated_minutes_watched, average_view_duration_seconds, average_view_percentage, subscribers_gained, subscribers_lost, likes, comments, shares
-       FROM channel_daily ORDER BY date DESC LIMIT 120`
+       FROM channel_daily ${filter} ORDER BY date DESC LIMIT 120`,
+      values
     );
     return rows.map((r) => ({
       date: toIsoDate(r.date) || String(r.date),
@@ -44,8 +47,9 @@ export async function getVideoStatsDB(channelId) {
               s.views, s.estimated_minutes_watched, s.average_view_duration_seconds, s.average_view_percentage, s.likes, s.comments, s.shares
        FROM video_stats s
        JOIN videos v ON v.video_id = s.video_id
-       WHERE s.sync_date = (SELECT MAX(sync_date) FROM video_stats)
-       ORDER BY s.views DESC`
+       WHERE s.sync_date = (SELECT MAX(sync_date) FROM video_stats) ${channelId ? 'AND v.channel_id = $1' : ''}
+       ORDER BY s.views DESC`,
+      channelId ? [channelId] : []
     );
     return rows.map((r) => ({
       videoId: r.video_id,
@@ -158,7 +162,7 @@ function weightedAvgDur(rows, fromIso, toIso) {
 
 export function formatTopVideos(videoStats, opts = {}) {
   if (!videoStats || videoStats.length === 0) {
-    return 'No per-video analytics stored yet. Run /sync first, then retry.';
+    return 'No per-video analytics rows in the window yet.\nYouTube only creates these rows 1-3 days after a video gets views (48-72h reporting delay). If your videos were just published, retry /videos tomorrow. Lifetime numbers are always visible via /report.';
   }
   let list = videoStats;
   if (opts.filter) list = list.filter((v) => (opts.filter === 'short' ? v.isShort : !v.isShort));

@@ -99,6 +99,7 @@ export async function getPerVideoTotals(days = 30) {
     endDate,
     metrics: VIDEO_METRICS,
     dimensions: 'video',
+    sort: '-views',
     maxResults: 200
   });
   return rows
@@ -168,13 +169,13 @@ export async function getTrafficSources(days = 28) {
     startDate,
     endDate,
     metrics: 'views,estimatedMinutesWatched',
-    dimensions: 'trafficSourceType',
+    dimensions: 'insightTrafficSourceType',
     maxResults: 60
   });
   return rows
-    .filter((r) => r.trafficSourceType)
+    .filter((r) => r.insightTrafficSourceType || r.trafficSourceType)
     .map((r) => ({
-      trafficSource: r.trafficSourceType,
+      trafficSource: r.insightTrafficSourceType || r.trafficSourceType,
       views: num(r.views),
       estimatedMinutesWatched: num(r.estimatedMinutesWatched)
     }));

@@ -13,7 +13,7 @@ import { fmtNum, fmtDuration, fmtPct, fmtDelta } from '../utils/formatting.js';
 import { AppError } from '../utils/errors.js';
 import { logSafeError } from '../utils/errors.js';
 
-const WELCOME = `Welcome! I am your private AI YouTube analyst.\n\nCommands:\n/status - API config and connection status\n/report - channel performance report\n/videos - top 10 videos by views\n/shorts - Shorts analysis\n/longform - long-form analysis\n/trends - recent growth trends\n/ideas - 5 AI video ideas from real data\n/analyze VIDEO_ID - deep dive one video\n/title VIDEO_ID - title alternatives\n/thumbnail VIDEO_ID - thumbnail concepts\n/weekly - weekly AI report\n/sync - refresh analytics storage\n/chat QUESTION - ask about your channel\n/model [NAME|reset] - switch or view the AI model\n\nFirst steps: authorize your channel (see README), then run /sync.`;
+const WELCOME = `Welcome! I am your private AI YouTube analyst.\n\nYou can simply type any question - no command needed. Examples:\n"Which topic grew fastest this month?"\n"Give me 3 title options for a new editing video"\n"Ideas for my next short?"\n\nCommands:\n/status - API config and connection status\n/report - channel performance report\n/videos - top 10 videos by views\n/shorts - Shorts analysis\n/longform - long-form analysis\n/trends - recent growth trends\n/ideas - 5 AI video ideas from real data\n/analyze VIDEO_ID - deep dive one video\n/title VIDEO_ID - title alternatives\n/thumbnail VIDEO_ID - thumbnail concepts\n/weekly - weekly AI report\n/sync - refresh analytics storage\n/chat QUESTION - ask about your channel\n/model [NAME|reset] - switch or view the AI model\n\nFirst steps: authorize your channel (see README), then run /sync.`;
 
 const HELP = WELCOME;
 
@@ -39,8 +39,26 @@ export async function handleTelegramUpdate(update) {
   const text = message.text || '';
   const parsed = parseCommand(text);
   if (!parsed) {
-    await sendText(chatId, 'I understand commands starting with / . Send /help to see them.');
-    return { handled: true };
+    if (!text) return { handled: false };
+    if (text.length > 500) {
+      await sendText(chatId, 'Please keep messages under 500 characters. For longer questions use /chat with a shorter version.');
+      return { handled: true, reason: 'too long' };
+    }
+    const limiterKey = `ai:${ownerTelegramId}`;
+    const rl = rateLimit(limiterKey, LIMITS.aiRequestsPerMinute, 60000);
+    if (!rl.allowed) {
+      await sendText(chatId, 'Too many requests. Please wait a minute before trying again.');
+      return { handled: true, reason: 'rate limited' };
+    }
+    await sendTyping(chatId);
+    try {
+      await cmdChat(chatId, text);
+    } catch (err) {
+      logSafeError('command.chat', err);
+      const userMessage = err instanceof AppError || err?.userMessage ? err.userMessage : `Something went wrong: ${String(err?.message || 'unknown error').slice(0, 200)}`;
+      await sendText(chatId, `${userMessage}`).catch(() => {});
+    }
+    return { handled: true, command: 'chat' };
   }
   if (!COMMAND_NAMES.has(parsed.command)) {
     await sendText(chatId, `Unknown command: /${parsed.command}. Send /help to see available commands.`);
@@ -128,17 +146,7 @@ async function dispatchCommand(command, args, chatId, ownerId) {
       return;
 
     case 'chat': {
-      if (!args) {
-        await sendText(chatId, 'Ask like this: /chat which video topic grew fastest this month?');
-        return;
-      }
-      if (args.length > 500) {
-        await sendText(chatId, 'Please keep questions under 500 characters.');
-        return;
-      }
-      const bundle = await collectChannelBundle();
-      const text = await answerChatQuestion(args, bundle);
-      await sendText(chatId, text || '(No answer produced. Try again.)');
+      await cmdChat(chatId, args);
       return;
     }
 
@@ -152,6 +160,21 @@ async function dispatchCommand(command, args, chatId, ownerId) {
 }
 
 const MODEL_SUGGESTIONS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+
+async function cmdChat(chatId, question) {
+  const text = (question || '').trim();
+  if (!text) {
+    await sendText(chatId, 'Ask like this: /chat which video topic grew fastest this month?');
+    return;
+  }
+  if (text.length > 500) {
+    await sendText(chatId, 'Please keep questions under 500 characters.');
+    return;
+  }
+  const bundle = await collectChannelBundle();
+  const answer = await answerChatQuestion(text, bundle);
+  await sendText(chatId, answer || '(No answer produced. Try again.)');
+}
 
 async function cmdModel(chatId, args) {
   if (!hasDatabase()) throw needDb();

@@ -6,6 +6,7 @@ export function normalizeVideo(item) {
   const contentDetails = item.contentDetails || {};
   const snippet = item.snippet || {};
   const stats = item.statistics || {};
+  const status = item.status || {};
   const durationSeconds = parseIsoDuration(contentDetails.duration) || 0;
   const title = snippet.title || '';
   const description = snippet.description || '';
@@ -19,6 +20,9 @@ export function normalizeVideo(item) {
     isShort: durationSeconds > 0 && durationSeconds <= 60,
     hashtagsShorts,
     publishedAt: snippet.publishedAt || null,
+    scheduledAt: status.publishAt || null,
+    privacyStatus: status.privacyStatus || null,
+    uploadStatus: status.uploadStatus || null,
     lifetimeViews: Number(stats.viewCount || 0),
     lifetimeLikes: Number(stats.likeCount || 0),
     lifetimeComments: Number(stats.commentCount || 0),
@@ -74,7 +78,7 @@ export async function getRecentVideos(limit = 200) {
       async () => {
         try {
           return await youtube.videos.list({
-            part: 'snippet,contentDetails,statistics',
+            part: 'snippet,contentDetails,statistics,status',
             id: batch.join(',')
           });
         } catch (err) {

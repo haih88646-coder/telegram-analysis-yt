@@ -67,8 +67,8 @@ export async function collectChannelBundle() {
     const { videos } = await getRecentVideos(200);
     const now = Date.now();
     upcoming = videos
-      .filter((v) => v.publishedAt && new Date(v.publishedAt).getTime() > now)
-      .sort((a, b) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime());
+      .filter((v) => v.scheduledAt && new Date(v.scheduledAt).getTime() > now)
+      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   } catch {
     upcoming = [];
   }
@@ -138,8 +138,8 @@ export function buildDataBundle(bundle) {
     lines.push('SCHEDULED / UPCOMING VIDEOS (from YouTube Data API, not Analytics):');
     lines.push(
       bundle.upcoming.map((v) => {
-        const dt = new Date(v.publishedAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-        return `- "${clip(v.title, 90)}" [${v.isShort ? 'Short' : 'Long-form'}] scheduled for ${dt}`;
+        const dt = new Date(v.scheduledAt).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+        return `- "${clip(v.title, 90)}" [${v.isShort ? 'Short' : 'Long-form'}] scheduled to go live at ${dt}`;
       }).join('\n')
     );
   }

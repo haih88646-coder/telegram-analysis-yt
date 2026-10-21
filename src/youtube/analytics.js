@@ -74,7 +74,7 @@ export async function getChannelDaily(days = 28) {
     endDate,
     metrics: CHANNEL_METRICS,
     dimensions: 'day',
-    sort: '+day',
+    sort: 'day',
     maxResults: Math.min(days + 3, 100)
   });
   return rows.map((r) => ({
@@ -124,7 +124,7 @@ export async function getVideoDaily(videoId, days = 21) {
     filters: `video==${videoId}`,
     metrics: VIDEO_METRICS,
     dimensions: 'day',
-    sort: '+day',
+    sort: 'day',
     maxResults: 40
   });
   return rows.map((r) => ({
